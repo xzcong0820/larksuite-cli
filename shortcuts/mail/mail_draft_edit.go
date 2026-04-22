@@ -15,6 +15,9 @@ import (
 	draftpkg "github.com/larksuite/cli/shortcuts/mail/draft"
 )
 
+// MailDraftEdit is the `+draft-edit` shortcut: update an existing draft
+// without sending it. Performs MIME-safe read/patch/write so unchanged
+// structure, attachments, and headers are preserved where possible.
 var MailDraftEdit = common.Shortcut{
 	Service:     "mail",
 	Command:     "+draft-edit",
@@ -35,6 +38,7 @@ var MailDraftEdit = common.Shortcut{
 		{Name: "print-patch-template", Type: "bool", Desc: "Print the JSON template and supported operations for the --patch-file flag. Recommended first step before generating a patch file. No draft read or write is performed."},
 		{Name: "set-priority", Desc: "Set email priority: high, normal, low. Setting 'normal' removes any existing priority header."},
 		{Name: "inspect", Type: "bool", Desc: "Inspect the draft without modifying it. Returns the draft projection including subject, recipients, body summary, has_quoted_content (whether the draft contains a reply/forward quote block), attachments_summary (with part_id and cid for each attachment), and inline_summary. Run this BEFORE editing body to check has_quoted_content: if true, use set_reply_body in --patch-file to preserve the quote; if false, use set_body."},
+		{Name: "request-receipt", Type: "bool", Desc: "Request a read receipt (Message Disposition Notification, RFC 3798) addressed to the draft's sender. Recipient mail clients may prompt the user, send automatically, or silently ignore — delivery of a receipt is not guaranteed. Adds the Disposition-Notification-To header; existing value is overwritten."},
 	},
 	DryRun: func(ctx context.Context, runtime *common.RuntimeContext) *common.DryRunAPI {
 		if runtime.Bool("print-patch-template") {
@@ -98,6 +102,25 @@ var MailDraftEdit = common.Shortcut{
 		var draftFromEmail string
 		if len(snapshot.From) > 0 {
 			draftFromEmail = snapshot.From[0].Address
+		}
+		if err := requireSenderForRequestReceipt(runtime, draftFromEmail); err != nil {
+			return err
+		}
+		if runtime.Bool("request-receipt") {
+			// draftFromEmail comes from the existing draft's From header,
+			// which could have been authored via a raw-EML path (IMAP APPEND,
+			// OpenAPI drafts raw) and contain CR/LF or dangerous Unicode.
+			// Going straight into PatchOp.Value would bypass emlbuilder's
+			// validateHeaderValue gate, so repeat the check here explicitly.
+			if err := validateHeaderAddress(draftFromEmail); err != nil {
+				return output.ErrValidation(
+					"cannot set --request-receipt: draft From address is unsafe for a header (%v)", err)
+			}
+			patch.Ops = append(patch.Ops, draftpkg.PatchOp{
+				Op:    "set_header",
+				Name:  "Disposition-Notification-To",
+				Value: "<" + draftFromEmail + ">",
+			})
 		}
 		for i := range patch.Ops {
 			if patch.Ops[i].Op == "insert_signature" {
@@ -173,6 +196,10 @@ var MailDraftEdit = common.Shortcut{
 	},
 }
 
+// executeDraftInspect implements the +draft-edit --inspect path: it fetches
+// the raw EML, parses it into a MIME snapshot, and emits a draft projection
+// (subject, recipients, body summary, attachment / inline summaries) without
+// modifying the draft.
 func executeDraftInspect(runtime *common.RuntimeContext, mailboxID, draftID string) error {
 	rawDraft, err := draftpkg.GetRaw(runtime, mailboxID, draftID)
 	if err != nil {
@@ -236,6 +263,8 @@ func executeDraftInspect(runtime *common.RuntimeContext, mailboxID, draftID stri
 	return nil
 }
 
+// prettyDraftAddresses renders a list of draft addresses as a comma-separated
+// string suitable for stderr human output. Returns "" for an empty list.
 func prettyDraftAddresses(addrs []draftpkg.Address) string {
 	if len(addrs) == 0 {
 		return ""
@@ -247,6 +276,11 @@ func prettyDraftAddresses(addrs []draftpkg.Address) string {
 	return strings.Join(parts, ", ")
 }
 
+// buildDraftEditPatch assembles a draftpkg.Patch from the runtime flags:
+// direct flags (--set-subject / --set-to / --set-cc / --set-bcc /
+// --set-priority) become Ops, and --patch-file is loaded and merged.
+// Returns ErrValidation when neither direct flags nor --patch-file produce
+// any operations.
 func buildDraftEditPatch(runtime *common.RuntimeContext) (draftpkg.Patch, error) {
 	patch := draftpkg.Patch{
 		Options: draftpkg.PatchOptions{
@@ -312,12 +346,22 @@ func buildDraftEditPatch(runtime *common.RuntimeContext) (draftpkg.Patch, error)
 		}
 	}
 
-	if len(patch.Ops) == 0 {
+	if len(patch.Ops) == 0 && !runtime.Bool("request-receipt") {
 		return patch, output.ErrValidation("at least one edit operation is required; use direct flags such as --set-subject/--set-to, or use --patch-file for body edits and other advanced operations (run --print-patch-template first)")
+	}
+	if len(patch.Ops) == 0 {
+		// --request-receipt only: Validate() would reject empty Ops, so skip it
+		// here. The Disposition-Notification-To op is appended in Execute once
+		// the draft's From address is known.
+		return patch, nil
 	}
 	return patch, patch.Validate()
 }
 
+// loadPatchFile reads and JSON-decodes a patch file from a relative path
+// rooted at the runtime's FileIO. Returns ErrValidation on read or parse
+// errors so the caller can surface a user-friendly message without leaking
+// internal stack traces.
 func loadPatchFile(runtime *common.RuntimeContext, path string) (draftpkg.Patch, error) {
 	var patch draftpkg.Patch
 	f, err := runtime.FileIO().Open(path)
@@ -335,6 +379,9 @@ func loadPatchFile(runtime *common.RuntimeContext, path string) (draftpkg.Patch,
 	return patch, patch.Validate()
 }
 
+// buildDraftEditPatchTemplate returns the JSON template emitted by
+// --print-patch-template. It documents the supported ops and field shapes so
+// callers can author a --patch-file without having to read this file's source.
 func buildDraftEditPatchTemplate() map[string]interface{} {
 	return map[string]interface{}{
 		"description": "Typed patch JSON for `mail +draft-edit --patch-file`. This is not RFC 6902 JSON Patch.",

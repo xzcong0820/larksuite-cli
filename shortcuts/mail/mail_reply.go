@@ -13,6 +13,9 @@ import (
 	"github.com/larksuite/cli/shortcuts/mail/emlbuilder"
 )
 
+// MailReply is the `+reply` shortcut: reply to the sender of a message,
+// saving a draft by default (or sending immediately with --confirm-send).
+// Automatically sets Re: subject, In-Reply-To, and References headers.
 var MailReply = common.Shortcut{
 	Service:     "mail",
 	Command:     "+reply",
@@ -33,6 +36,7 @@ var MailReply = common.Shortcut{
 		{Name: "inline", Desc: "Inline images as a JSON array. Each entry: {\"cid\":\"<unique-id>\",\"file_path\":\"<relative-path>\"}. All file_path values must be relative paths. Cannot be used with --plain-text. CID images are embedded via <img src=\"cid:...\"> in the HTML body. CID is a unique identifier, e.g. a random hex string like \"a1b2c3d4e5f6a7b8c9d0\"."},
 		{Name: "confirm-send", Type: "bool", Desc: "Send the reply immediately instead of saving as draft. Only use after the user has explicitly confirmed recipients and content."},
 		{Name: "send-time", Desc: "Scheduled send time as a Unix timestamp in seconds. Must be at least 5 minutes in the future. Use with --confirm-send to schedule the email."},
+		{Name: "request-receipt", Type: "bool", Desc: "Request a read receipt (Message Disposition Notification, RFC 3798) addressed to the sender. Recipient mail clients may prompt the user, send automatically, or silently ignore — delivery of a receipt is not guaranteed."},
 		signatureFlag,
 		priorityFlag},
 	DryRun: func(ctx context.Context, runtime *common.RuntimeContext) *common.DryRunAPI {
@@ -104,7 +108,16 @@ var MailReply = common.Shortcut{
 		orig := sourceMsg.Original
 		stripLargeAttachmentCard(&orig)
 
-		senderEmail := resolveComposeSenderEmail(runtime)
+		resolvedSender := resolveComposeSenderEmail(runtime)
+		// Check --request-receipt BEFORE the orig.headTo fallback below:
+		// the receipt's Disposition-Notification-To must point to an address
+		// the caller explicitly controls, not to a fallback picked from the
+		// original mail's headers (which may belong to someone else when the
+		// mailbox is only on CC or in a shared-mailbox scenario).
+		if err := requireSenderForRequestReceipt(runtime, resolvedSender); err != nil {
+			return err
+		}
+		senderEmail := resolvedSender
 		if senderEmail == "" {
 			senderEmail = orig.headTo
 		}
@@ -135,6 +148,12 @@ var MailReply = common.Shortcut{
 			ToAddrs(parseNetAddrs(replyTo))
 		if senderEmail != "" {
 			bld = bld.From("", senderEmail)
+		}
+		// Note: requireSenderForRequestReceipt already ran above against
+		// resolvedSender (pre-fallback). When --request-receipt is set we
+		// are guaranteed resolvedSender != "", so senderEmail == resolvedSender.
+		if runtime.Bool("request-receipt") {
+			bld = bld.DispositionNotificationTo("", senderEmail)
 		}
 		if ccFlag != "" {
 			bld = bld.CCAddrs(parseNetAddrs(ccFlag))

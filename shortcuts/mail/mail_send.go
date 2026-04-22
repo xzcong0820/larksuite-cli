@@ -13,6 +13,8 @@ import (
 	"github.com/larksuite/cli/shortcuts/mail/emlbuilder"
 )
 
+// MailSend is the `+send` shortcut: compose a new email and save it as a
+// draft by default (or send immediately with --confirm-send).
 var MailSend = common.Shortcut{
 	Service:     "mail",
 	Command:     "+send",
@@ -33,6 +35,7 @@ var MailSend = common.Shortcut{
 		{Name: "inline", Desc: "Inline images as a JSON array. Each entry: {\"cid\":\"<unique-id>\",\"file_path\":\"<relative-path>\"}. All file_path values must be relative paths. Cannot be used with --plain-text. CID images are embedded via <img src=\"cid:...\"> in the HTML body. CID is a unique identifier, e.g. a random hex string like \"a1b2c3d4e5f6a7b8c9d0\"."},
 		{Name: "confirm-send", Type: "bool", Desc: "Send the email immediately instead of saving as draft. Only use after the user has explicitly confirmed recipients and content."},
 		{Name: "send-time", Desc: "Scheduled send time as a Unix timestamp in seconds. Must be at least 5 minutes in the future. Use with --confirm-send to schedule the email."},
+		{Name: "request-receipt", Type: "bool", Desc: "Request a read receipt (Message Disposition Notification, RFC 3798) addressed to the sender. Recipient mail clients may prompt the user, send automatically, or silently ignore — delivery of a receipt is not guaranteed."},
 		signatureFlag,
 		priorityFlag},
 	DryRun: func(ctx context.Context, runtime *common.RuntimeContext) *common.DryRunAPI {
@@ -105,6 +108,12 @@ var MailSend = common.Shortcut{
 			ToAddrs(parseNetAddrs(to))
 		if senderEmail != "" {
 			bld = bld.From("", senderEmail)
+		}
+		if err := requireSenderForRequestReceipt(runtime, senderEmail); err != nil {
+			return err
+		}
+		if runtime.Bool("request-receipt") {
+			bld = bld.DispositionNotificationTo("", senderEmail)
 		}
 		if ccFlag != "" {
 			bld = bld.CCAddrs(parseNetAddrs(ccFlag))

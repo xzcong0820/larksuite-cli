@@ -25,6 +25,7 @@ func newRuntimeWithFrom(from string) *common.RuntimeContext {
 	return &common.RuntimeContext{Cmd: cmd}
 }
 
+// TestBuildRawEMLForDraftCreate_ResolvesLocalImages verifies build raw EML for draft create resolves local images.
 func TestBuildRawEMLForDraftCreate_ResolvesLocalImages(t *testing.T) {
 	chdirTemp(t)
 	os.WriteFile("test_image.png", []byte{0x89, 'P', 'N', 'G', 0x0D, 0x0A, 0x1A, 0x0A}, 0o644)
@@ -53,6 +54,7 @@ func TestBuildRawEMLForDraftCreate_ResolvesLocalImages(t *testing.T) {
 	}
 }
 
+// TestBuildRawEMLForDraftCreate_NoLocalImages verifies build raw EML for draft create no local images.
 func TestBuildRawEMLForDraftCreate_NoLocalImages(t *testing.T) {
 	input := draftCreateInput{
 		From:    "sender@example.com",
@@ -75,6 +77,7 @@ func TestBuildRawEMLForDraftCreate_NoLocalImages(t *testing.T) {
 	}
 }
 
+// TestBuildRawEMLForDraftCreate_AutoResolveCountedInSizeLimit verifies build raw EML for draft create auto resolve counted in size limit.
 func TestBuildRawEMLForDraftCreate_AutoResolveCountedInSizeLimit(t *testing.T) {
 	chdirTemp(t)
 	// Create a 1KB PNG file — small, but enough to push over the limit
@@ -104,6 +107,7 @@ func TestBuildRawEMLForDraftCreate_AutoResolveCountedInSizeLimit(t *testing.T) {
 	}
 }
 
+// TestBuildRawEMLForDraftCreate_OrphanedInlineSpecError verifies build raw EML for draft create orphaned inline spec error.
 func TestBuildRawEMLForDraftCreate_OrphanedInlineSpecError(t *testing.T) {
 	chdirTemp(t)
 	os.WriteFile("unused.png", []byte{0x89, 'P', 'N', 'G', 0x0D, 0x0A, 0x1A, 0x0A}, 0o644)
@@ -124,6 +128,7 @@ func TestBuildRawEMLForDraftCreate_OrphanedInlineSpecError(t *testing.T) {
 	}
 }
 
+// TestBuildRawEMLForDraftCreate_MissingCIDRefError verifies build raw EML for draft create missing CID ref error.
 func TestBuildRawEMLForDraftCreate_MissingCIDRefError(t *testing.T) {
 	chdirTemp(t)
 	os.WriteFile("present.png", []byte{0x89, 'P', 'N', 'G', 0x0D, 0x0A, 0x1A, 0x0A}, 0o644)
@@ -144,6 +149,7 @@ func TestBuildRawEMLForDraftCreate_MissingCIDRefError(t *testing.T) {
 	}
 }
 
+// TestBuildRawEMLForDraftCreate_WithPriority verifies build raw EML for draft create with priority.
 func TestBuildRawEMLForDraftCreate_WithPriority(t *testing.T) {
 	input := draftCreateInput{
 		From:    "sender@example.com",
@@ -161,6 +167,7 @@ func TestBuildRawEMLForDraftCreate_WithPriority(t *testing.T) {
 	}
 }
 
+// TestBuildRawEMLForDraftCreate_NoPriority verifies build raw EML for draft create no priority.
 func TestBuildRawEMLForDraftCreate_NoPriority(t *testing.T) {
 	input := draftCreateInput{
 		From:    "sender@example.com",
@@ -178,6 +185,67 @@ func TestBuildRawEMLForDraftCreate_NoPriority(t *testing.T) {
 	}
 }
 
+// newRuntimeWithFromAndRequestReceipt mirrors newRuntimeWithFrom but also
+// exposes the --request-receipt bool flag so tests can exercise the
+// Disposition-Notification-To / validation-error paths gated by that flag.
+func newRuntimeWithFromAndRequestReceipt(from string, requestReceipt bool) *common.RuntimeContext {
+	cmd := &cobra.Command{Use: "test"}
+	cmd.Flags().String("from", "", "")
+	cmd.Flags().String("mailbox", "", "")
+	cmd.Flags().Bool("request-receipt", false, "")
+	if from != "" {
+		_ = cmd.Flags().Set("from", from)
+	}
+	if requestReceipt {
+		_ = cmd.Flags().Set("request-receipt", "true")
+	}
+	return &common.RuntimeContext{Cmd: cmd}
+}
+
+// TestBuildRawEMLForDraftCreate_RequestReceiptAddsHeader verifies build raw EML for draft create request receipt adds header.
+func TestBuildRawEMLForDraftCreate_RequestReceiptAddsHeader(t *testing.T) {
+	input := draftCreateInput{
+		From:    "sender@example.com",
+		Subject: "needs receipt",
+		Body:    "<p>hi</p>",
+	}
+
+	rawEML, err := buildRawEMLForDraftCreate(context.Background(),
+		newRuntimeWithFromAndRequestReceipt("sender@example.com", true), input, nil, "")
+	if err != nil {
+		t.Fatalf("buildRawEMLForDraftCreate() error = %v", err)
+	}
+	eml := decodeBase64URL(rawEML)
+
+	// Pin the full header value, not just "sender@example.com" somewhere in the
+	// EML — the From: header already contains that address, so a substring
+	// check would pass even if the DNT wiring was completely broken.
+	if !strings.Contains(eml, "Disposition-Notification-To: <sender@example.com>") {
+		t.Errorf("expected DNT header addressed to sender; got EML:\n%s", eml)
+	}
+}
+
+// TestBuildRawEMLForDraftCreate_RequestReceiptOmittedByDefault verifies build raw EML for draft create request receipt omitted by default.
+func TestBuildRawEMLForDraftCreate_RequestReceiptOmittedByDefault(t *testing.T) {
+	input := draftCreateInput{
+		From:    "sender@example.com",
+		Subject: "no receipt",
+		Body:    "<p>hi</p>",
+	}
+
+	rawEML, err := buildRawEMLForDraftCreate(context.Background(),
+		newRuntimeWithFromAndRequestReceipt("sender@example.com", false), input, nil, "")
+	if err != nil {
+		t.Fatalf("buildRawEMLForDraftCreate() error = %v", err)
+	}
+	eml := decodeBase64URL(rawEML)
+
+	if strings.Contains(eml, "Disposition-Notification-To:") {
+		t.Errorf("expected no Disposition-Notification-To header when --request-receipt unset; got EML:\n%s", eml)
+	}
+}
+
+// TestBuildRawEMLForDraftCreate_PlainTextSkipsResolve verifies build raw EML for draft create plain text skips resolve.
 func TestBuildRawEMLForDraftCreate_PlainTextSkipsResolve(t *testing.T) {
 	chdirTemp(t)
 	os.WriteFile("img.png", []byte{0x89, 'P', 'N', 'G', 0x0D, 0x0A, 0x1A, 0x0A}, 0o644)
@@ -201,6 +269,7 @@ func TestBuildRawEMLForDraftCreate_PlainTextSkipsResolve(t *testing.T) {
 	}
 }
 
+// TestMailDraftCreatePrettyOutputsReference verifies mail draft create pretty outputs reference.
 func TestMailDraftCreatePrettyOutputsReference(t *testing.T) {
 	f, stdout, _, reg := mailShortcutTestFactory(t)
 
