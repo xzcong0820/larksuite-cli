@@ -166,6 +166,7 @@ type DraftProjection struct {
 	LargeAttachmentsSummary []LargeAttachmentSummary `json:"large_attachments_summary,omitempty"`
 	InlineSummary           []PartSummary            `json:"inline_summary,omitempty"`
 	Warnings                []string                 `json:"warnings,omitempty"`
+	Priority                string                   `json:"priority"`
 }
 
 type Patch struct {
