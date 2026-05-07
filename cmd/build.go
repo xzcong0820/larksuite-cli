@@ -105,6 +105,11 @@ func buildInternal(ctx context.Context, inv cmdutil.InvocationContext, opts ...B
 
 	installTipsHelpFunc(rootCmd)
 	rootCmd.SilenceErrors = true
+	// Install structured "did you mean" handler for unknown flags. cobra's
+	// FlagErrorFunc lookup walks up to the root, so a single install on the
+	// root applies to every subcommand. Other flag-error types (required
+	// flag missing, type mismatch, etc.) pass through unchanged.
+	rootCmd.SetFlagErrorFunc(cmdutil.UnknownFlagHandler)
 
 	RegisterGlobalFlags(rootCmd.PersistentFlags(), &cfg.globals)
 	rootCmd.PersistentPreRun = func(cmd *cobra.Command, args []string) {
