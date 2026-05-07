@@ -293,6 +293,9 @@ func executeDraftInspect(runtime *common.RuntimeContext, mailboxID, draftID stri
 		if len(projection.Warnings) > 0 {
 			fmt.Fprintf(w, "warnings: %s\n", sanitizeForTerminal(strings.Join(projection.Warnings, "; ")))
 		}
+		if projection.Priority != "" {
+			fmt.Fprintf(w, "priority: %s\n", sanitizeForTerminal(projection.Priority))
+		}
 	})
 	return nil
 }
@@ -553,6 +556,7 @@ func buildDraftEditPatchTemplate() map[string]interface{} {
 			"`add_inline`/`replace_inline`/`remove_inline` are for CID-based inline images",
 			"`replace_inline` keeps the original filename and content_type when those fields are omitted",
 			"protected headers require `allow_protected_header_edits=true`",
+			"--set-priority high|normal|low controls draft priority via X-Cli-Priority header (CLI/OAPI specific). high → set_header X-Cli-Priority=1; low → set_header X-Cli-Priority=5; normal → remove_header X-Cli-Priority. Backend mail-data-access headersToPbBodyExtra recognizes X-Cli-Priority but not standard X-Priority/Importance for OAPI flow.",
 		},
 		"command_example":    "lark-cli mail +draft-edit --print-patch-template",
 		"patch_file_example": "lark-cli mail +draft-edit --draft-id d_xxx --patch-file ./patch.json",
