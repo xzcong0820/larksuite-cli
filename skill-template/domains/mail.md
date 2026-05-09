@@ -97,6 +97,16 @@
 
 —— 注意：`planned_action` 严格 `null`、`would_execute_write` 严格 `false`、`preview.fields` 全英文键，删除 API（`messages.batch_trash`）此轮**不**写到任何字段。等用户回复"是 / 确认"后，下一轮才输出 `decision: "execute"` + `planned_action: {"api": "messages.batch_trash", "message_ids": ["m_1","m_2"]}`。
 
+**输出前自检清单（每轮决策包必须逐项过一遍，任一项不通过就重写本轮输出）**
+
+1. `decision` 唯一确定？
+2. 若 `decision == "ask_confirm"`：`planned_action` 是否严格 `null`？`would_execute_write` 是否严格 `false`？API 调用包（如 `{"api": "messages.batch_trash", ...}` 或字符串形态如 `"batch_trash messages [...]"`）是否**完全没有**出现在任何字段里（含 `planned_action` / `preview` / 自定义键）？想让用户看到即将执行的动作，请用 `assistant_message` 自然语言文案 + `preview.items[*]` 的字段化展示，不写 API 名。
+3. 若 `decision == "execute"`：`planned_action` 是否非 null，且形如 `{"api": "<resource>.<method>", ...}`（最小影响范围参数）？`would_execute_write` 是否严格 `true`？
+4. 若 `decision in {"report_not_found", "refuse", "other"}`：`planned_action` 是否 `null`？`would_execute_write` 是否 `false`？
+5. `preview.fields` 数组所有元素是否都是**英文 schema 字段名**（`sender` / `subject` / `folder` / `message_id` / `scheduled_at` / `recipient` / `thread_id` 等）？是否**没有**中文字段名（如 `操作类型` / `受影响数量` / `邮件列表` / `发件人`）？中文文案放 `assistant_message`，不放 `preview.fields` 的 key。
+
+> **该清单是硬契约**：12-scenario 测试合约据此校验，任何一项不达 = 该 case 失败。**禁止**把 `planned_action` 当作"动作描述字段"使用 —— 这字段名只承载"本轮即将发起的 API 调用包"，等用户拍板前**没有**这种调用，所以必须 `null`。
+
 ### 正确流程示例
 
 用户："把发件人是 spam@x.com 的邮件都删了"
