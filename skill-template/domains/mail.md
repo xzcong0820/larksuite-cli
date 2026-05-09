@@ -75,6 +75,28 @@
 
 可逆操作（标签 / 已读 / 移动文件夹）按上表直接走 `execute` 路径，**不经过 ask_confirm**——这是免确认的体现，不要为了"看起来更稳妥"而把可逆操作也走 ask_confirm，那样反而违背可逆免确认的设计。
 
+**`preview.fields` 的 key 命名约束**：必须是**英文 schema 字段名**（如 `sender`、`subject`、`folder`、`message_id`、`scheduled_at`、`recipient`、`thread_id`），与 RPC schema 字段一一对应；不要用本地化中文标签（如 `操作类型`、`受影响数量`、`邮件列表`）—— 中文标签会让上层调用方无法按字段名映射结构化数据，verify 会判失败。中文文案放 `assistant_message` 给用户看，不要放进 `preview.fields` 的 key。
+
+**ask_confirm 轮的正面 JSON 示例**（用户："帮我删掉 Alice 昨天发来的那两封邮件"，agent 已经把范围定到 2 条邮件 m_1 / m_2）：
+
+```json
+{
+  "decision": "ask_confirm",
+  "planned_action": null,
+  "would_execute_write": false,
+  "preview": {
+    "fields": ["sender", "subject", "folder"],
+    "items": [
+      {"sender": "alice@x.com", "subject": "周报 2025-W18", "folder": "INBOX"},
+      {"sender": "alice@x.com", "subject": "周会 reschedule", "folder": "INBOX"}
+    ]
+  },
+  "assistant_message": "将永久删除 2 封 Alice 昨日邮件（如上预览），确认删除吗？"
+}
+```
+
+—— 注意：`planned_action` 严格 `null`、`would_execute_write` 严格 `false`、`preview.fields` 全英文键，删除 API（`messages.batch_trash`）此轮**不**写到任何字段。等用户回复"是 / 确认"后，下一轮才输出 `decision: "execute"` + `planned_action: {"api": "messages.batch_trash", "message_ids": ["m_1","m_2"]}`。
+
 ### 正确流程示例
 
 用户："把发件人是 spam@x.com 的邮件都删了"
