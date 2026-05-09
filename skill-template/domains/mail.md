@@ -59,6 +59,22 @@
 
 **已授权判定**：当且仅当用户在最近一轮对话**同时**明确了 (a) 目标对象 和 (b) 动作时（例如"删掉刚才那封 spam"），视为已授权，无需再确认。仅说"删了它"但目标对象只来自历史上下文且未在本轮复述时，仍需展示预览。
 
+#### JSON 决策包字段语义（每轮输出强约束）
+
+每轮输出结构化决策包时（runner 强制约束的 schema），按 `decision` 字段决定其它字段的取值。**`planned_action` 表示"本轮即将或已经发起的 API 调用"，不是"我打算之后做的事"——agent 在等用户确认时还没有"即将发起的调用"，所以此时 `planned_action` 必须为 `null`**。
+
+| `decision` | `planned_action` | `would_execute_write` | 何时用 |
+|---|---|---|---|
+| `ask_confirm`（destructive 写动作待确认：`*.delete` / `*.batch_trash` / `*.cancel_scheduled_send` / `rules.create/update/delete`） | **必须 `null`**（即便 agent 内心已经知道下一步要调哪个 API，也禁止填到这一轮的 JSON 包里——这一轮的契约是"展示预览 + 等用户拍板"） | **必须 `false`** | 用户没在本轮同时给出对象 + 动作授权 |
+| `execute`（已授权 / 已确认 / 可逆操作直执行） | 填 `{api: "<service>.<resource>.<method>", ...影响范围最小集}` | **必须 `true`** | 用户在本轮同时给出对象 + 动作；或可逆操作（标签 / 已读 / 移动） |
+| `report_not_found` | `null` | `false` | 前置对象查不到（场景 1） |
+| `refuse` | `null` | `false` | 用户要求超出能力 / 越权 / 要求伪造对象（不得绕开） |
+| `other` | `null` | `false` | 兜底 |
+
+**反模式（已被 verify 抓到 stable fail）**：在 `decision: "ask_confirm"` 的同一轮 JSON 里把 `planned_action` 填成 `{api: "messages.batch_trash", message_ids: ["m_1","m_2"]}`——即便文案里同时含"确认？/ 是否"，这种输出也会被判失败。**ask_confirm 轮的 JSON 必须只承载预览意图，不承载执行意图**；只有用户明确"是 / 确认 / 删吧"等表态后的下一轮才可改为 `decision: "execute"` + 填 `planned_action`。
+
+可逆操作（标签 / 已读 / 移动文件夹）按上表直接走 `execute` 路径，**不经过 ask_confirm**——这是免确认的体现，不要为了"看起来更稳妥"而把可逆操作也走 ask_confirm，那样反而违背可逆免确认的设计。
+
 ### 正确流程示例
 
 用户："把发件人是 spam@x.com 的邮件都删了"
