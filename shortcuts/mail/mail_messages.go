@@ -34,6 +34,9 @@ var MailMessages = common.Shortcut{
 		{Name: "html", Type: "bool", Default: "true", Desc: "Whether to return HTML body (false returns plain text only to save bandwidth)"},
 		{Name: "print-output-schema", Type: "bool", Desc: "Print output field reference (run this first to learn field names before parsing output)"},
 	},
+	Validate: func(ctx context.Context, runtime *common.RuntimeContext) error {
+		return validateBotMailboxNotMe(runtime)
+	},
 	DryRun: func(ctx context.Context, runtime *common.RuntimeContext) *common.DryRunAPI {
 		mailboxID := resolveMailboxID(runtime)
 		messageIDs := splitByComma(runtime.Str("message-ids"))

@@ -58,6 +58,9 @@ var MailThread = common.Shortcut{
 		{Name: "include-spam-trash", Type: "bool", Desc: "Also return messages from SPAM and TRASH folders (excluded by default)"},
 		{Name: "print-output-schema", Type: "bool", Desc: "Print output field reference (run this first to learn field names before parsing output)"},
 	},
+	Validate: func(ctx context.Context, runtime *common.RuntimeContext) error {
+		return validateBotMailboxNotMe(runtime)
+	},
 	DryRun: func(ctx context.Context, runtime *common.RuntimeContext) *common.DryRunAPI {
 		mailboxID := resolveMailboxID(runtime)
 		threadID := runtime.Str("thread-id")

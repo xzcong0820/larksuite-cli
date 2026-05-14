@@ -2602,3 +2602,14 @@ func buildCalendarBody(runtime *common.RuntimeContext, senderEmail string, toAdd
 		senderEmail, toAddrs, ccAddrs,
 	)
 }
+
+// validateBotMailboxNotMe rejects the combination of bot identity with --mailbox me.
+// bot uses tenant access token; "me" cannot be resolved to a user mailbox under TAT.
+func validateBotMailboxNotMe(runtime *common.RuntimeContext) error {
+	if runtime.IsBot() && runtime.Str("mailbox") == "me" {
+		return output.ErrValidation(
+			"--as bot does not support --mailbox me: bot identity uses a tenant token and cannot resolve \"me\" to a user mailbox; " +
+				"pass an explicit email address, e.g. --mailbox alice@example.com")
+	}
+	return nil
+}
