@@ -20,6 +20,10 @@ var MailMessage = common.Shortcut{
 	Scopes:      []string{"mail:user_mailbox.message:readonly", "mail:user_mailbox.message.address:read", "mail:user_mailbox.message.subject:read", "mail:user_mailbox.message.body:read"},
 	AuthTypes:   []string{"user", "bot"},
 	HasFormat:   true,
+	FlagHints: map[string]string{
+		"id":      "message-id",
+		"mail-id": "message-id",
+	},
 	Flags: []common.Flag{
 		{Name: "mailbox", Default: "me", Desc: "email address (default: me)"},
 		{Name: "message-id", Desc: "Required. Email message ID", Required: true},

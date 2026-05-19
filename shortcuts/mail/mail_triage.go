@@ -53,6 +53,12 @@ var MailTriage = common.Shortcut{
 	Risk:        "read",
 	Scopes:      []string{"mail:user_mailbox.message:readonly", "mail:user_mailbox.message.address:read", "mail:user_mailbox.message.subject:read", "mail:user_mailbox.message.body:read"},
 	AuthTypes:   []string{"user", "bot"},
+	FlagHints: map[string]string{
+		"search":  "query",
+		"keyword": "query",
+		"limit":   "max",
+		"count":   "max",
+	},
 	Flags: []common.Flag{
 		{Name: "format", Default: "table", Desc: "output format: table | json | data (json/data output object with pagination fields)"},
 		{Name: "max", Type: "int", Default: "20", Desc: "maximum number of messages to fetch (1-400; auto-paginates internally)"},

@@ -4,6 +4,7 @@
 package mail
 
 import (
+	"encoding/json"
 	"errors"
 	"testing"
 
@@ -349,4 +350,141 @@ func TestLevenshtein_EmptyAndIdentical(t *testing.T) {
 	assert.Equal(t, 3, levenshtein("abc", ""))
 	assert.Equal(t, 0, levenshtein("abc", "abc"))
 	assert.Equal(t, 1, levenshtein("abc", "abd"))
+}
+
+// --- readFlagHints ---
+
+func TestReadFlagHints_Normal(t *testing.T) {
+	cmd := &cobra.Command{Use: "test"}
+	cmd.Annotations = map[string]string{
+		"flag_hints": `{"set-body":"patch-file","recipient":"to"}`,
+	}
+	hints := readFlagHints(cmd)
+	require.NotNil(t, hints)
+	assert.Equal(t, "patch-file", hints["set-body"])
+	assert.Equal(t, "to", hints["recipient"])
+}
+
+func TestReadFlagHints_NilAnnotations(t *testing.T) {
+	cmd := &cobra.Command{Use: "test"}
+	assert.Nil(t, readFlagHints(cmd))
+}
+
+func TestReadFlagHints_KeyAbsent(t *testing.T) {
+	cmd := &cobra.Command{Use: "test"}
+	cmd.Annotations = map[string]string{"other_key": "value"}
+	assert.Nil(t, readFlagHints(cmd))
+}
+
+func TestReadFlagHints_InvalidJSON(t *testing.T) {
+	cmd := &cobra.Command{Use: "test"}
+	cmd.Annotations = map[string]string{"flag_hints": `{not valid json`}
+	assert.Nil(t, readFlagHints(cmd), "malformed JSON must return nil without panicking")
+}
+
+// --- flagSuggestErrorFunc FlagHints priority 0 ---
+
+// newFakeMailCmdWithHints returns a command with flags registered and
+// FlagHints stored in Annotations, mirroring what runner.go does at
+// mount time.
+func newFakeMailCmdWithHints(flags map[string]string, hints map[string]string) *cobra.Command {
+	cmd := &cobra.Command{Use: "mail-sub"}
+	for name, usage := range flags {
+		cmd.Flags().String(name, "", usage)
+	}
+	if hints != nil {
+		b, _ := json.Marshal(hints)
+		cmd.Annotations = map[string]string{"flag_hints": string(b)}
+	}
+	return cmd
+}
+
+func TestFlagSuggestErrorFunc_FlagHints_Hit(t *testing.T) {
+	cmd := newFakeMailCmdWithHints(
+		map[string]string{"patch-file": "patch body from file"},
+		map[string]string{"set-body": "patch-file"},
+	)
+	got := flagSuggestErrorFunc(cmd, errors.New("unknown flag: --set-body"))
+	var exitErr *output.ExitError
+	require.True(t, errors.As(got, &exitErr))
+	assert.Equal(t, "unknown_flag", exitErr.Detail.Type)
+
+	cands := exitErr.Detail.Detail.(map[string]any)["candidates"].([]Candidate)
+	require.NotEmpty(t, cands)
+	assert.Equal(t, "--patch-file", cands[0].Flag)
+	assert.Equal(t, 0, cands[0].Distance)
+	assert.Equal(t, "hint", cands[0].Reason, "FlagHints match must carry reason=hint")
+}
+
+func TestFlagSuggestErrorFunc_FlagHints_TopPriority(t *testing.T) {
+	// Even when edit-distance would also find a candidate, the hint must
+	// appear first and carry reason=hint.
+	cmd := newFakeMailCmdWithHints(
+		map[string]string{"patch-file": "", "patch-fil": ""},
+		map[string]string{"set-body": "patch-file"},
+	)
+	got := flagSuggestErrorFunc(cmd, errors.New("unknown flag: --set-body"))
+	var exitErr *output.ExitError
+	require.True(t, errors.As(got, &exitErr))
+
+	cands := exitErr.Detail.Detail.(map[string]any)["candidates"].([]Candidate)
+	require.NotEmpty(t, cands)
+	assert.Equal(t, "--patch-file", cands[0].Flag)
+	assert.Equal(t, "hint", cands[0].Reason)
+}
+
+func TestFlagSuggestErrorFunc_FlagHints_Dedup(t *testing.T) {
+	// The hint target must not appear twice in candidates even when
+	// suggest() would also match it via prefix/edit-distance.
+	cmd := newFakeMailCmdWithHints(
+		map[string]string{"patch-file": ""},
+		map[string]string{"patch-fil": "patch-file"}, // "patch-fil" typo → "patch-file"
+	)
+	got := flagSuggestErrorFunc(cmd, errors.New("unknown flag: --patch-fil"))
+	var exitErr *output.ExitError
+	require.True(t, errors.As(got, &exitErr))
+
+	cands := exitErr.Detail.Detail.(map[string]any)["candidates"].([]Candidate)
+	count := 0
+	for _, c := range cands {
+		if c.Flag == "--patch-file" {
+			count++
+		}
+	}
+	assert.Equal(t, 1, count, "--patch-file must appear exactly once (no dedup violation)")
+}
+
+func TestFlagSuggestErrorFunc_FlagHints_Miss_FallsBackToLevenshtein(t *testing.T) {
+	// FlagHints has no entry for the unknown token; normal suggest must
+	// still fire.
+	cmd := newFakeMailCmdWithHints(
+		map[string]string{"patch-file": ""},
+		map[string]string{"set-body": "patch-file"}, // unrelated hint
+	)
+	got := flagSuggestErrorFunc(cmd, errors.New("unknown flag: --patch-fil"))
+	var exitErr *output.ExitError
+	require.True(t, errors.As(got, &exitErr))
+
+	cands := exitErr.Detail.Detail.(map[string]any)["candidates"].([]Candidate)
+	require.NotEmpty(t, cands)
+	assert.NotEqual(t, "hint", cands[0].Reason, "must fall back to prefix/edit_distance when hint misses")
+}
+
+func TestFlagSuggestErrorFunc_FlagHints_ShorthandUnaffected(t *testing.T) {
+	// FlagHints must not interfere with shorthand errors.
+	cmd := newFakeMailCmdWithHints(
+		map[string]string{"to": ""},
+		map[string]string{"t": "to"}, // hypothetical hint key that looks like a shorthand
+	)
+	cmd.Flags().StringP("body", "b", "", "")
+	got := flagSuggestErrorFunc(cmd, errors.New("unknown shorthand flag: 'b' in -bXY"))
+	var exitErr *output.ExitError
+	require.True(t, errors.As(got, &exitErr))
+
+	cands := exitErr.Detail.Detail.(map[string]any)["candidates"].([]Candidate)
+	require.NotEmpty(t, cands)
+	// All shorthand candidates must not carry reason=hint.
+	for _, c := range cands {
+		assert.NotEqual(t, "hint", c.Reason)
+	}
 }

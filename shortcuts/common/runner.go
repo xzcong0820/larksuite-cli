@@ -734,6 +734,13 @@ func (s Shortcut) mountDeclarative(ctx context.Context, parent *cobra.Command, f
 	registerShortcutFlagsWithContext(ctx, cmd, f, &shortcut)
 	cmdutil.SetTips(cmd, shortcut.Tips)
 	cmdutil.SetRisk(cmd, shortcut.Risk)
+	if shortcut.FlagHints != nil {
+		b, _ := json.Marshal(shortcut.FlagHints)
+		if cmd.Annotations == nil {
+			cmd.Annotations = make(map[string]string)
+		}
+		cmd.Annotations["flag_hints"] = string(b)
+	}
 	parent.AddCommand(cmd)
 	if shortcut.PostMount != nil {
 		shortcut.PostMount(cmd)

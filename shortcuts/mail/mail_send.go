@@ -23,6 +23,12 @@ var MailSend = common.Shortcut{
 	Risk:        "write",
 	Scopes:      []string{"mail:user_mailbox.message:send", "mail:user_mailbox.message:modify", "mail:user_mailbox:readonly"},
 	AuthTypes:   []string{"user"},
+	FlagHints: map[string]string{
+		"recipient":    "to",
+		"recipients":   "to",
+		"message-body": "body",
+		"content":      "body",
+	},
 	Flags: []common.Flag{
 		{Name: "to", Desc: "Recipient email address(es), comma-separated"},
 		{Name: "subject", Desc: "Email subject. Required unless --template-id supplies a non-empty subject."},

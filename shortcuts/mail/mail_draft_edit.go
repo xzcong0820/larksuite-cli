@@ -27,6 +27,17 @@ var MailDraftEdit = common.Shortcut{
 	Scopes:      []string{"mail:user_mailbox.message:modify", "mail:user_mailbox.message:readonly", "mail:user_mailbox:readonly"},
 	AuthTypes:   []string{"user"},
 	HasFormat:   true,
+	FlagHints: map[string]string{
+		"set-body":     "patch-file",
+		"body":         "patch-file",
+		"content":      "patch-file",
+		"message-body": "patch-file",
+		"to":           "set-to",
+		"recipient":    "set-to",
+		"recipients":   "set-to",
+		"id":           "draft-id",
+		"mail-id":      "draft-id",
+	},
 	Flags: []common.Flag{
 		{Name: "from", Default: "me", Desc: "Mailbox email address containing the draft (default: me). Prefer --mailbox for clarity; --from is kept for backward compatibility."},
 		{Name: "mailbox", Desc: "Mailbox email address that owns the draft (default: falls back to --from, then me). Takes priority over --from when both are set."},

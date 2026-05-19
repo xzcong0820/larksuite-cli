@@ -51,7 +51,14 @@ type Shortcut struct {
 	Flags     []Flag   // flag definitions; --dry-run is auto-injected
 	HasFormat bool     // auto-inject --format flag (json|pretty|table|ndjson|csv)
 	Tips      []string // optional tips shown in --help output
-	Hidden    bool     // hide from --help / tab completion (still executable); use when deprecating a command in favor of a replacement
+	// FlagHints maps a misused flag name (without "--") to the correct flag name
+	// (without "--"). The framework generates "did you mean: --<value>?" for exact
+	// matches, keeping the same format as edit-distance suggestions.
+	// Key contract: no "--" prefix; value must be a valid registered flag name.
+	// Leave nil when no domain-specific mapping is needed — edit-distance fallback
+	// still applies.
+	FlagHints map[string]string
+	Hidden    bool // hide from --help / tab completion (still executable); use when deprecating a command in favor of a replacement
 
 	// Business logic hooks.
 	DryRun   func(ctx context.Context, runtime *RuntimeContext) *DryRunAPI // optional: framework prints & returns when --dry-run is set

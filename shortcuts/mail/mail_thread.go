@@ -51,6 +51,11 @@ var MailThread = common.Shortcut{
 	Scopes:      []string{"mail:user_mailbox.message:readonly", "mail:user_mailbox.message.address:read", "mail:user_mailbox.message.subject:read", "mail:user_mailbox.message.body:read"},
 	AuthTypes:   []string{"user", "bot"},
 	HasFormat:   true,
+	FlagHints: map[string]string{
+		"thread":       "thread-id",
+		"conversation": "thread-id",
+		"tid":          "thread-id",
+	},
 	Flags: []common.Flag{
 		{Name: "mailbox", Default: "me", Desc: "email address (default: me)"},
 		{Name: "thread-id", Desc: "Required. Email thread ID", Required: true},

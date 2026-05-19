@@ -4,6 +4,7 @@
 package mail
 
 import (
+	"encoding/json"
 	"fmt"
 	"sort"
 	"strings"
@@ -32,8 +33,9 @@ type Candidate struct {
 	// Distance is the Levenshtein edit distance to the unknown token.
 	// Zero indicates a bidirectional prefix hit (Reason == "prefix").
 	Distance int `json:"distance"`
-	// Reason explains how the candidate was matched: "prefix" for
-	// bidirectional prefix hits, "edit_distance" for fuzzy matches.
+	// Reason explains how the candidate was matched: "hint" for
+	// FlagHints exact matches, "prefix" for bidirectional prefix hits,
+	// "edit_distance" for fuzzy matches.
 	Reason string `json:"reason"`
 }
 
@@ -74,11 +76,29 @@ func flagSuggestErrorFunc(c *cobra.Command, err error) error {
 	if isShorthand {
 		matches = suggestShorthand(token, names)
 	} else {
-		matches = suggest(token, names)
+		// Priority 0: per-command FlagHints exact match (registered via Annotations).
+		var hintTarget string
+		if hints := readFlagHints(c); len(hints) > 0 {
+			hintTarget = hints[token]
+		}
+		if hintTarget != "" {
+			var shorthand string
+			if f := c.Flags().Lookup(hintTarget); f != nil {
+				shorthand = f.Shorthand
+			}
+			matches = append(matches, Candidate{Flag: "--" + hintTarget, Shorthand: shorthand, Distance: 0, Reason: "hint"})
+		}
+		// Priority 1+2: prefix + Levenshtein, deduplicating the hint target.
+		for _, cand := range suggest(token, names) {
+			if hintTarget != "" && cand.Flag == "--"+hintTarget {
+				continue
+			}
+			matches = append(matches, cand)
+		}
+		if len(matches) > maxCandidates {
+			matches = matches[:maxCandidates]
+		}
 	}
-	// Normalise to a non-nil slice so the JSON envelope always emits
-	// `candidates: []` instead of `null`, keeping the wire shape stable
-	// for downstream parsers regardless of command-state.
 	if matches == nil {
 		matches = []Candidate{}
 	}
@@ -256,6 +276,24 @@ func levThreshold(s string) int {
 		return 4
 	}
 	return t
+}
+
+// readFlagHints retrieves the FlagHints map stored in cmd.Annotations by
+// shortcuts/common/runner.go during command registration. Returns nil when
+// no hints are configured for this subcommand.
+func readFlagHints(cmd *cobra.Command) map[string]string {
+	if cmd.Annotations == nil {
+		return nil
+	}
+	raw, ok := cmd.Annotations["flag_hints"]
+	if !ok {
+		return nil
+	}
+	var hints map[string]string
+	if err := json.Unmarshal([]byte(raw), &hints); err != nil {
+		return nil
+	}
+	return hints
 }
 
 // levenshtein computes the standard Levenshtein edit distance between
