@@ -75,6 +75,9 @@ var MailTemplateCreate = common.Shortcut{
 		return api
 	},
 	Validate: func(ctx context.Context, runtime *common.RuntimeContext) error {
+		if err := validateBotMailboxNotMe(runtime); err != nil {
+			return err
+		}
 		if strings.TrimSpace(runtime.Str("name")) == "" {
 			return output.ErrValidation("--name is required")
 		}
@@ -199,3 +202,4 @@ func addTemplateUploadSteps(runtime *common.RuntimeContext, api *common.DryRunAP
 	api.POST("/open-apis/drive/v1/medias/upload_part").Desc("Large file parts")
 	api.POST("/open-apis/drive/v1/medias/upload_finish").Desc("Large file finish")
 }
+
