@@ -83,8 +83,12 @@ More help: lark-cli <command> --help`
 func Execute() int {
 	inv, err := BootstrapInvocationContext(os.Args[1:])
 	if err != nil {
-		fmt.Fprintln(os.Stderr, "Error:", err)
-		return 1
+		// pflag parse errors (e.g. bad flag syntax) that bypass cobra — emit
+		// structured JSON so callers get a machine-readable validation_error
+		// with exit 2 instead of plain text with exit 1.
+		exitErr := output.Errorf(output.ExitValidation, "validation_error", err.Error())
+		output.WriteErrorEnvelope(os.Stderr, exitErr, "")
+		return output.ExitValidation
 	}
 	configureFlagCompletions(os.Args)
 
