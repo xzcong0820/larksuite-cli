@@ -375,4 +375,3 @@ func buildTemplatePatchSkeleton() map[string]interface{} {
 		"bccs":               []map[string]string{{"mail_address": "string", "name": "string(optional)"}},
 	}
 }
-
