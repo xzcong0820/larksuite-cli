@@ -202,4 +202,3 @@ func addTemplateUploadSteps(runtime *common.RuntimeContext, api *common.DryRunAP
 	api.POST("/open-apis/drive/v1/medias/upload_part").Desc("Large file parts")
 	api.POST("/open-apis/drive/v1/medias/upload_finish").Desc("Large file finish")
 }
-
