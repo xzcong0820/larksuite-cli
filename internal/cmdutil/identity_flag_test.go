@@ -79,6 +79,9 @@ func TestAddShortcutIdentityFlag_UserOnlyAuthTypes(t *testing.T) {
 	if flag == nil {
 		t.Fatal("expected --as flag to be registered")
 	}
+	if flag.Hidden {
+		t.Fatal("expected --as flag to be visible")
+	}
 	wantUsage := "identity type: user"
 	if flag.Usage != wantUsage {
 		t.Errorf("Usage = %q, want %q", flag.Usage, wantUsage)
@@ -98,6 +101,12 @@ func TestAddShortcutIdentityFlag_UserBotAuthTypes(t *testing.T) {
 	flag := cmd.Flags().Lookup("as")
 	if flag == nil {
 		t.Fatal("expected --as flag to be registered")
+	}
+	if flag.Hidden {
+		t.Fatal("expected --as flag to be visible")
+	}
+	if got := flag.DefValue; got != "" {
+		t.Fatalf("default value = %q, want empty string", got)
 	}
 	wantUsage := "identity type: user | bot"
 	if flag.Usage != wantUsage {
