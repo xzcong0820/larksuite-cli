@@ -83,11 +83,11 @@ var MailTemplateUpdate = common.Shortcut{
 		return api
 	},
 	Validate: func(ctx context.Context, runtime *common.RuntimeContext) error {
-		if err := validateBotMailboxNotMe(runtime); err != nil {
-			return err
-		}
 		if runtime.Bool("print-patch-template") {
 			return nil
+		}
+		if err := validateBotMailboxNotMe(runtime); err != nil {
+			return err
 		}
 		if err := validateTemplateID(runtime.Str("template-id")); err != nil {
 			return err
