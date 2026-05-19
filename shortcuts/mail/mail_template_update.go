@@ -83,6 +83,9 @@ var MailTemplateUpdate = common.Shortcut{
 		return api
 	},
 	Validate: func(ctx context.Context, runtime *common.RuntimeContext) error {
+		if err := validateBotMailboxNotMe(runtime); err != nil {
+			return err
+		}
 		if runtime.Bool("print-patch-template") {
 			return nil
 		}
@@ -372,3 +375,4 @@ func buildTemplatePatchSkeleton() map[string]interface{} {
 		"bccs":               []map[string]string{{"mail_address": "string", "name": "string(optional)"}},
 	}
 }
+
